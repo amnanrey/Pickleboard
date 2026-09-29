@@ -526,14 +526,6 @@ body { padding-bottom: 74px; }
           <div style="font-size:1.5rem;font-weight:800;color:var(--white);margin-top:4px;" id="calc-rounds-result">16 rounds</div>
           <div style="font-size:0.72rem;color:var(--grey);margin-top:4px;" id="calc-rounds-detail">3h · 2 courts · 10 min games + 2 min changeover</div>
         </div>
-        <div id="fixed-pairs-list"></div>
-          <div style="display:flex;gap:8px;margin-top:8px;">
-            <select id="pair-a" style="flex:1;"></select>
-            <select id="pair-b" style="flex:1;"></select>
-            <button class="btn btn-primary" onclick="addFixedPair()">Pair</button>
-          </div>
-          <button class="btn btn-outline btn-full" style="margin-top:8px;" onclick="autoFixedPairs()">Auto-pair remaining (L1+L2 when possible)</button>
-        </div>
         <button class="btn btn-primary btn-full" onclick="applyCalcAndGenerate()">Use calculated rounds & Generate</button>
         <button class="btn btn-outline btn-full" onclick="regenerateSchedule()" style="margin-top:8px;">Generate Fixed Schedule</button>
         <button class="btn btn-outline btn-full" onclick="initBracketMode()" style="margin-top:8px;">Start Winners vs Winners</button>
@@ -582,10 +574,10 @@ function teamLabel(team) {
 
 const AV_CLASSES = ['av-a','av-b','av-c','av-d'];
 
-function save() { try { localStorage.setItem('pb_live_v50', JSON.stringify(state)); } catch(e){} }
+function save() { try { localStorage.setItem('pb_live_v51', JSON.stringify(state)); } catch(e){} }
 function load() {
   try {
-    const d = JSON.parse(localStorage.getItem('pb_live_v50'));
+    const d = JSON.parse(localStorage.getItem('pb_live_v51'));
     if (d && d.players) { state = Object.assign(state, d); if (!state.currentRound) state.currentRound = 1; if (!state.levels) state.levels = {}; if (!state.fixedPairs) state.fixedPairs = []; state.pairMode = 'rotate'; ensureLevels();
 try { renderFixedPairs(); } catch(e) {} return true; }
   } catch(e){}
@@ -942,7 +934,7 @@ function recordResult(team1, team2, score1, score2) {
     score2: Number(score2),
     ts: Date.now()
   });
-  try { localStorage.setItem('pb_live_v50', JSON.stringify(state)); } catch(e) {}
+  try { localStorage.setItem('pb_live_v51', JSON.stringify(state)); } catch(e) {}
 }
 
 // ===== WINNERS vs WINNERS / LOSERS vs LOSERS =====
