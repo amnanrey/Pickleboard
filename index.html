@@ -234,12 +234,15 @@ header {
   background: rgba(255,255,255,0.04); color: var(--white); font-size: 1rem;
 }
 .form-group select option { background: var(--navy); }
-.player-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.player-grid { display: flex; flex-direction: column; gap: 8px; }
 .player-chip {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 12px; padding: 10px;
-  display: flex; justify-content: space-between; align-items: center;
+  border-radius: 12px; padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 28px minmax(0,1fr) 120px 36px;
+  align-items: center;
+  gap: 8px;
   font-size: 0.85rem; font-weight: 600;
 }
 .player-chip .num {
@@ -248,7 +251,23 @@ header {
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 0.68rem; font-weight: 800; margin-right: 6px;
 }
-.player-chip button { background: none; border: none; color: var(--danger); font-size: 1.1rem; cursor: pointer; }
+.player-chip .pname { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.player-chip .lvl-sel { width: 100%; font-size: 0.72rem; }
+.player-chip button.del, .player-chip .del {
+  background: rgba(255,90,120,0.18) !important;
+  border: 1px solid #ff6b8a !important;
+  color: #ff6b8a !important;
+  font-size: 1.25rem !important;
+  line-height: 1 !important;
+  width: 36px !important; height: 36px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-direction: row !important;
+  padding: 0 !important;
+  cursor: pointer;
+}
 .hidden { display: none !important; }
 .toast {
   position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
@@ -598,7 +617,7 @@ function teamLabel(team) {
 
 const AV_CLASSES = ['av-a','av-b','av-c','av-d'];
 
-function save() { try { localStorage.setItem('pb_live_v68', JSON.stringify(state)); } catch(e){} }
+function save() { try { localStorage.setItem('pb_live_v95', JSON.stringify(state)); } catch(e){} }
 
 function renameInList(arr, map) {
   if (!arr) return arr;
@@ -639,13 +658,14 @@ function migrateRoster() {
 
 function load() {
   try {
-    const d = JSON.parse(localStorage.getItem('pb_live_v68'));
+    const d = JSON.parse(localStorage.getItem('pb_live_v95'));
     if (d && d.players) { state = Object.assign(state, d); if (!state.currentRound) state.currentRound = 1; if (!state.levels) state.levels = {}; if (!state.fixedPairs) state.fixedPairs = []; if (!state.pairMode) state.pairMode = 'rotate'; migrateRoster(); ensureLevels(); return true; }
   } catch(e){}
   return false;
 }
 function toast(msg) {
   const t = document.getElementById('toast');
+  if (!t) { console.log(msg); return; }
   t.textContent = msg; t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2200);
 }
@@ -832,7 +852,7 @@ function resetTimer() {
 function setTimerMinutes(v) { if (!timerRunning) { timerSeconds = Number(v)*60; updateTimerDisplay(); } }
 
 function prevRound() {
-  if (state.mode === 'bracket') { toast('Use Advance Stage / + Round'); return; }
+  if (state.mode === 'bracket') { toast('Use Next round / + Round'); return; }
   if ((state.currentRound || 1) > 1) {
     state.currentRound--;
     state.courtRound = {1: state.currentRound, 2: state.currentRound};
@@ -844,7 +864,7 @@ function prevRound() {
   }
 }
 function nextCourtGame(courtNum) {
-  if (state.mode === 'bracket') { toast('Use Advance / + Round'); return; }
+  if (state.mode === 'bracket') { toast('Use Next round'); return; }
   if (!state.courtRound) state.courtRound = {1: state.currentRound||1, 2: state.currentRound||1};
   const maxR = state.rounds || ((state.schedule||[]).reduce((m,x)=>Math.max(m,x.round||0),0));
   const cur = state.courtRound[courtNum] || state.currentRound || 1;
@@ -861,7 +881,15 @@ function nextCourtGame(courtNum) {
   }
 }
 function nextRound() {
-  if (state.mode === 'bracket') { toast('Use Advance Stage / + Round'); return; }
+  if (state.mode === 'bracket') {
+    try { ensureCourtsFilled(); } catch(e) {}
+    if ((state.liveCourts||[]).some(c => c.done || !c.team1 || c.team1.length<2)) {
+      addBracketRound();
+      return;
+    }
+    toast('Courts are live — record scores first');
+    return;
+  }
   const maxR = state.rounds || ((state.schedule||[]).reduce((m,x)=>Math.max(m,x.round||0),0));
   if ((state.currentRound || 1) < maxR) {
     state.currentRound++;
@@ -988,14 +1016,22 @@ function updateLiveScore(courtIdx, which, val) {
 
 function recordResult(team1, team2, score1, score2) {
   if (!state.results) state.results = [];
+  const t1 = Array.isArray(team1) ? [...team1] : [];
+  const t2 = Array.isArray(team2) ? [...team2] : [];
+  const last = state.results[state.results.length-1];
+  if (last && last.score1==Number(score1) && last.score2==Number(score2)
+      && last.team1 && last.team1.join()===t1.join() && last.team2.join()===t2.join()
+      && Date.now()-(last.ts||0) < 8000) {
+    return false;
+  }
   state.results.push({
-    team1: Array.isArray(team1) ? [...team1] : [],
-    team2: Array.isArray(team2) ? [...team2] : [],
+    team1: t1,
+    team2: t2,
     score1: Number(score1),
     score2: Number(score2),
     ts: Date.now()
   });
-  try { localStorage.setItem('pb_live_v68', JSON.stringify(state)); } catch(e) {}
+  try { localStorage.setItem('pb_live_v95', JSON.stringify(state)); } catch(e) {}
 }
 
 // ===== WINNERS vs WINNERS / LOSERS vs LOSERS =====
@@ -1018,7 +1054,7 @@ function initBracketMode() {
   renderAll();
   const n = state.players.length;
   const g = Math.ceil(n / 4);
-  toast('Stage 1: ' + g + ' games for ' + n + ' players (everyone plays once)');
+  toast('Round 1: ' + g + ' games for ' + n + ' players (everyone plays once)');
 }
 
 
@@ -1072,7 +1108,7 @@ function stage2PreviewHTML() {
   }
   const leftover = ranked.length % 4;
   const extra = leftover ? '<div style="font-size:0.72rem;color:var(--grey);margin-top:6px;">Sit / catch-up: '+ranked.slice(-leftover).join(', ')+'</div>' : '';
-  return '<div class="sitting-bar" style="margin-top:8px;"><strong>STAGE 2 PREVIEW</strong> <span style="color:var(--grey2);font-weight:500;">(from current standings — updates as scores come in)</span>'+
+  return '<div class="sitting-bar" style="margin-top:8px;"><strong>ROUND 2 PREVIEW</strong> <span style="color:var(--grey2);font-weight:500;">(from current standings — updates as scores come in)</span>'+
     rows + extra + '</div>';
 }
 
@@ -1100,19 +1136,19 @@ function bracketStageInfoHTML() {
   const stage1Games = Math.ceil(n / 4); // 19 → 5
   if (stage === 1) {
     return `<div style="background:rgba(0,229,195,0.08);border:1px solid rgba(0,229,195,0.2);border-radius:12px;padding:6px 10px;margin-bottom:6px;">
-      <div style="font-size:0.7rem;letter-spacing:1.5px;color:var(--aqua);font-weight:700;">STAGE 1 · EVERYONE PLAYS</div>
+      <div style="font-size:0.7rem;letter-spacing:1.5px;color:var(--aqua);font-weight:700;">ROUND 1 · EVERYONE PLAYS</div>
       <div style="font-size:0.78rem;color:var(--grey);margin-top:2px;">${n} players → ${stage1Games} games (most play once; ${stage1Games * 4 - n} extra slot${stage1Games*4-n===1?'':'s'}). ${results}/${stage1Games} done.</div>
     </div>`;
   }
   if (final) {
     return `<div style="background:rgba(200,255,61,0.12);border:1px solid rgba(200,255,61,0.35);border-radius:12px;padding:6px 10px;margin-bottom:6px;">
-      <div style="font-size:0.7rem;letter-spacing:1.5px;color:var(--neon);font-weight:800;">FINAL STAGE</div>
-      <div style="font-size:0.9rem;font-weight:700;margin-top:4px;">Stage ${stage} · seeded 1&4 vs 3&2, 5&8 vs 6&7…</div>
+      <div style="font-size:0.7rem;letter-spacing:1.5px;color:var(--neon);font-weight:800;">FINAL ROUND</div>
+      <div style="font-size:0.9rem;font-weight:700;margin-top:4px;">Round ${stage} · seeded 1&4 vs 3&2, 5&8 vs 6&7…</div>
       <div style="font-size:0.75rem;color:var(--grey);margin-top:4px;">${results} games played so far.</div>
     </div>`;
   }
   return `<div style="background:rgba(0,229,195,0.08);border:1px solid rgba(0,229,195,0.2);border-radius:12px;padding:6px 10px;margin-bottom:6px;">
-    <div style="font-size:0.7rem;letter-spacing:1.5px;color:var(--aqua);font-weight:700;">STAGE ${stage} · SEEDED</div>
+    <div style="font-size:0.7rem;letter-spacing:1.5px;color:var(--aqua);font-weight:700;">ROUND ${stage} · SEEDED</div>
     <div style="font-size:0.78rem;color:var(--grey);margin-top:2px;">Ranked by wins: 1&amp;4 vs 3&amp;2, 5&amp;8 vs 6&amp;7… · ${results} games done</div>
   </div>`;
 }
@@ -1216,21 +1252,47 @@ function buildBracketStage() {
   const matches = [];
   state.balanceUsedThisStage = false;
 
-  const gamesNeeded = Math.ceil(n / 4); // 19 → 5, each person once + 1 extra slot
+  const st0 = (typeof getPlayerStats==='function') ? getPlayerStats() : {};
+  const playedNow = (nm) => st0[nm] ? st0[nm].played : 0;
+  const minNow = n ? Math.min.apply(null, state.players.map(playedNow)) : 0;
+  const maxNow = n ? Math.max.apply(null, state.players.map(playedNow)) : 0;
+  // Every stage: everyone plays at least once. Extra slots (to keep even games) go to fewest played.
+  let stagePool = state.players.slice();
+  let gamesNeeded = Math.max(1, Math.ceil(stagePool.length / 4));
+  if (gamesNeeded % 2 === 1) gamesNeeded += 1;
   const usedThisStage = {};
-  state.players.forEach(p => usedThisStage[p] = 0);
+  state.players.forEach(p => usedThisStage[p] = (stagePool.indexOf(p) < 0 ? 99 : 0));
 
   function takeFourEven() {
     const order = [...state.players].sort((a, b) => {
-      const ua = usedThisStage[a], ub = usedThisStage[b];
+      const ua = usedThisStage[a]||0, ub = usedThisStage[b]||0;
       if (ua !== ub) return ua - ub;
       return actualPlayed(a) - actualPlayed(b) || Math.random() - 0.5;
     });
     return order.slice(0, 4);
   }
 
+  function takeFourMixedLevels() {
+    const unused = state.players.filter(p => (usedThisStage[p] || 0) === 0);
+    const sortLeast = (a,b) => actualPlayed(a)-actualPlayed(b) || usedThisStage[a]-usedThisStage[b] || Math.random()-0.5;
+    let pool;
+    if (unused.length >= 4) {
+      pool = unused.slice().sort(sortLeast);
+    } else {
+      // Extra game: people with fewest games overall, then fewest this stage
+      pool = state.players.slice().sort(sortLeast);
+    }
+    const nov = pool.filter(p => playerLevel(p)===1);
+    const inter = pool.filter(p => playerLevel(p)!==1);
+    if (unused.length >= 4 && nov.length >= 2 && inter.length >= 2) return [nov[0], nov[1], inter[0], inter[1]];
+    if (unused.length >= 4 && nov.length >= 1 && inter.length >= 3) return [nov[0], inter[0], inter[1], inter[2]];
+    if (unused.length >= 4 && inter.length >= 1 && nov.length >= 3) return [inter[0], nov[0], nov[1], nov[2]];
+    if (pool.length >= 4) return pool.slice(0,4);
+    return takeFourEven();
+  }
+
   for (let g = 0; g < gamesNeeded; g++) {
-    const four = takeFourEven();
+    const four = (stage === 1) ? takeFourMixedLevels() : takeFourEven();
     four.forEach(p => usedThisStage[p]++);
     let paired;
     if (stage === 1) paired = pairMixed(four);
@@ -1239,10 +1301,16 @@ function buildBracketStage() {
       four.sort((a, b) => ranked.indexOf(a) - ranked.indexOf(b));
       paired = pairSeeded(four);
     }
+    let path = 'seeded';
+    if (stage === 1) {
+      const lv = paired.team1.concat(paired.team2).map(playerLevel);
+      const mixedTeams = playerLevel(paired.team1[0]) !== playerLevel(paired.team1[1]) && playerLevel(paired.team2[0]) !== playerLevel(paired.team2[1]);
+      path = mixedTeams ? 'L1+L2 vs L1+L2' : 'stage 1';
+    }
     matches.push({
       team1: paired.team1,
       team2: paired.team2,
-      path: stage === 1 ? 'mixed L1+L2' : 'seeded'
+      path: path
     });
   }
 
@@ -1271,23 +1339,30 @@ function buildBracketStage() {
 
 
 function lastWaveNeedsFill() {
-  if (state.mode !== 'bracket') return false;
-  const pending = (state.bracketPending || []).length;
-  if (pending > 0) return false; // still official matches queued
-  const courts = state.liveCourts || [];
-  const live = courts.filter(c => !c.done && c.team1 && c.team1.length >= 2);
-  const vacant = courts.filter(c => c.done || !c.team1 || c.team1.length < 2);
-  // Only when exactly one court is playing the last official game
-  return live.length === 1 && vacant.length >= 1;
+  return false; // last finished court stays empty until Next / Advance
 }
 
 function ensureCourtsFilled() {
+  if (state.mode !== 'bracket') return;
+  const n = state.courts || 2;
+  if (!state.liveCourts) state.liveCourts = [];
+  while (state.liveCourts.length < n) {
+    state.liveCourts.push({ court: state.liveCourts.length+1, team1:[], team2:[], score1:null, score2:null, path:'', done:true });
+  }
+  // Official remaining matches first
+  state.liveCourts.forEach(c => {
+    if (!c.done && c.team1 && c.team1.length >= 2) return;
+    if (state.bracketPending && state.bracketPending.length) {
+      const m = state.bracketPending.shift();
+      c.team1 = m.team1; c.team2 = m.team2; c.score1 = null; c.score2 = null; c.path = m.path||''; c.done = false;
+    }
+  });
   if (!lastWaveNeedsFill()) return;
-  if (state.balanceUsedThisStage) return;
-  const vacant = (state.liveCourts || []).filter(c => c.done || !c.team1 || c.team1.length < 2);
-  if (!vacant.length) return;
-  const ok = fillIdleCourtWithBalance(vacant[0]);
-  if (ok) state.balanceUsedThisStage = true;
+  state.liveCourts.forEach(c => {
+    if (c._endFilled) return;
+    if (!c.done && c.team1 && c.team1.length >= 2) return;
+    if (fillIdleCourtWithBalance(c)) c._endFilled = true;
+  });
 }
 
 function fillIdleCourtWithBalance(court) {
@@ -1299,27 +1374,28 @@ function fillIdleCourtWithBalance(court) {
     (c.team2 || []).forEach(p => busy.add(p));
   });
   if (!state.playCount) state.playCount = {};
-  if (state.pairMode === 'fixed' && (state.fixedPairs||[]).length >= 2) {
-    const free = (state.fixedPairs||[]).filter(pr => !busy.has(pr[0]) && !busy.has(pr[1]));
-    if (free.length < 2) return false;
-    free.sort((a,b) => Math.random()-0.5);
-    court.team1 = free[0].slice();
-    court.team2 = free[1].slice();
-    court.score1 = null; court.score2 = null;
-    court.path = 'court fill';
-    court.done = false;
-    return true;
-  }
-  const played = (typeof gamesPlayed==='function') ? gamesPlayed : (n => 0);
-  let pool = (state.players||[]).filter(p => !busy.has(p))
-    .sort((a,b) => played(a)-played(b) || Math.random()-0.5);
+  const played = (n) => {
+    const st = (typeof getPlayerStats==='function') ? getPlayerStats() : {};
+    return st[n] ? st[n].played : 0;
+  };
+  let pool = (state.players || []).filter(p => !busy.has(p));
   if (pool.length < 4) return false;
-  const four = pool.slice(0,4);
-  const sh = shuffle([...four]);
-  court.team1 = [sh[0], sh[1]];
-  court.team2 = [sh[2], sh[3]];
-  court.score1 = null; court.score2 = null;
-  court.path = 'court fill';
+  const minP = Math.min.apply(null, pool.map(played));
+  // least games first; among those, highest ranking
+  pool.sort((a,b) => played(a)-played(b) || rankScore(b)-rankScore(a) || Math.random()-0.5);
+  const low = pool.filter(p => played(p) <= minP + 1);
+  const pickFrom = low.length >= 4 ? low : pool;
+  const nov = pickFrom.filter(p => playerLevel(p)===1);
+  const inter = pickFrom.filter(p => playerLevel(p)!==1);
+  let four;
+  if (nov.length >= 2 && inter.length >= 2) four = [nov[0], nov[1], inter[0], inter[1]];
+  else four = pickFrom.slice(0,4);
+  const paired = pairMixed(four);
+  court.team1 = paired.team1;
+  court.team2 = paired.team2;
+  court.score1 = null;
+  court.score2 = null;
+  court.path = 'end-stage fill';
   court.done = false;
   four.forEach(p => { state.playCount[p] = (state.playCount[p]||0)+1; });
   return true;
@@ -1329,82 +1405,64 @@ function fillCourtWithAvailable(court) {
   return fillIdleCourtWithBalance(court);
 }
 
-function updateBracketScore(courtIdx, which, val) {
-  if (!state.liveCourts || !state.liveCourts[courtIdx]) return;
+function updateBracketScore(courtNo, which, val) {
+  if (!state.liveCourts) return;
+  const court = state.liveCourts.find(c => c.court === courtNo) || state.liveCourts[courtNo] || state.liveCourts[courtNo-1];
+  if (!court) return;
   const num = val === '' ? null : Number(val);
-  if (which === 1) state.liveCourts[courtIdx].score1 = num;
-  else state.liveCourts[courtIdx].score2 = num;
+  if (which === 1) court.score1 = num;
+  else court.score2 = num;
   save();
-  renderLive();
 }
 
-function finishBracketCourt(courtIdx) {
+window.finishBracketCourt = function finishBracketCourt(courtNo) {
   try {
-  if (!state.liveCourts || !state.liveCourts[courtIdx]) return;
-  const court = state.liveCourts[courtIdx];
-  if (!court || court.done) return;
-  const inp1 = document.querySelector('[data-court-score="'+courtIdx+'-1"]');
-  const inp2 = document.querySelector('[data-court-score="'+courtIdx+'-2"]');
-  if (inp1 && inp1.value !== '') court.score1 = Number(inp1.value);
-  if (inp2 && inp2.value !== '') court.score2 = Number(inp2.value);
-  if (court.score1 == null || court.score2 == null || court.score1 === '' || court.score2 === '') {
-    toast('Enter both scores first');
-    return;
-  }
-  const s1 = Number(court.score1), s2 = Number(court.score2);
-  if (isNaN(s1) || isNaN(s2)) { toast('Enter both scores first'); return; }
-  if (s1 === s2) { toast('No ties – need a winner'); return; }
-  if (!state.playCount) state.playCount = {};
-  if (!state.results) state.results = [];
-
-
-  recordResult(court.team1, court.team2, s1, s2);
-  // Track simple W/L path for display
-  if (!state.playerPath) state.playerPath = {};
-  const winners = s1 > s2 ? court.team1 : court.team2;
-  const losers = s1 > s2 ? court.team2 : court.team1;
-  winners.forEach(p => { state.playerPath[p] = (state.playerPath[p] || '') + 'W'; });
-  losers.forEach(p => { state.playerPath[p] = (state.playerPath[p] || '') + 'L'; });
-
-  // Next pending match onto this court
-  if (state.bracketPending && state.bracketPending.length) {
-    const next = state.bracketPending.shift();
-    court.team1 = next.team1;
-    court.team2 = next.team2;
-    court.score1 = null;
-    court.score2 = null;
-    court.path = next.path || '';
-    court.done = false;
-    next.team1.concat(next.team2).forEach(p => {
-      state.playCount[p] = (state.playCount[p] || 0) + 1;
-    });
-  } else {
-    court.done = true;
-  }
-
-
-
-  const onCourt = new Set();
-  state.liveCourts.forEach(c => {
-    if (!c.done) {
-      c.team1.forEach(p => onCourt.add(p));
-      c.team2.forEach(p => onCourt.add(p));
+    if (!state.liveCourts) { alert('No courts'); return; }
+    const court = state.liveCourts.find(c => Number(c.court) === Number(courtNo));
+    if (!court) { alert('Court ' + courtNo + ' not found'); return; }
+    if (court.done) { toast('That court is already recorded'); return; }
+    const inp1 = document.querySelector('[data-court-score="'+courtNo+'-1"]');
+    const inp2 = document.querySelector('[data-court-score="'+courtNo+'-2"]');
+    const raw1 = inp1 ? String(inp1.value).trim() : '';
+    const raw2 = inp2 ? String(inp2.value).trim() : '';
+    if (raw1 === '' || raw2 === '') {
+      toast('Enter BOTH scores');
+      alert('Enter both scores on Court ' + courtNo + ' (empty is not 0)');
+      return;
     }
-  });
-  state.sitQueue = state.players.filter(p => !onCourt.has(p));
-  state.currentRound = (state.currentRound || 1) + 1;
-  save();
-  try { resetCourtTimer(courtIdx); } catch (e) {}
-  try { ensureCourtsFilled(); } catch(e) {}
-  renderLive();
-  renderStandings();
-  renderRounds();
-  toast('Result recorded');
+    const s1 = Number(raw1), s2 = Number(raw2);
+    if (isNaN(s1) || isNaN(s2)) { alert('Scores must be numbers'); return; }
+    if (s1 === s2) { alert('No ties'); return; }
+    const t1 = Array.isArray(court.team1) ? court.team1.slice() : [];
+    const t2 = Array.isArray(court.team2) ? court.team2.slice() : [];
+    if (t1.length < 2 || t2.length < 2) { alert('Court has no teams'); return; }
+    if (!state.results) state.results = [];
+    recordResult(t1, t2, s1, s2);
+    if (!state.playerPath) state.playerPath = {};
+    (s1 > s2 ? t1 : t2).forEach(p => { state.playerPath[p] = (state.playerPath[p] || '') + 'W'; });
+    (s1 > s2 ? t2 : t1).forEach(p => { state.playerPath[p] = (state.playerPath[p] || '') + 'L'; });
+    if (state.bracketPending && state.bracketPending.length) {
+      const next = state.bracketPending.shift();
+      court.team1 = next.team1;
+      court.team2 = next.team2;
+      court.score1 = null;
+      court.score2 = null;
+      court.path = next.path || '';
+      court.done = false;
+    } else {
+      court.done = true;
+      court.score1 = s1;
+      court.score2 = s2;
+    }
+    save();
+    renderLive();
+    try { renderStandings(); } catch(e) {}
+    try { renderRounds(); } catch(e) {}
+    toast('Court ' + courtNo + ' recorded ' + s1 + '-' + s2);
   } catch (err) {
-    console.error(err);
-    alert('Could not record score: ' + err.message);
+    alert('Could not record: ' + (err && err.message ? err.message : err));
   }
-}
+};
 
 function stage1Complete() {
   const n = state.players.length;
@@ -1413,6 +1471,8 @@ function stage1Complete() {
 }
 
 function advanceBracketStage() {
+  state.balanceUsedThisStage = false;
+  (state.liveCourts||[]).forEach(c => { c._endFilled = false; });
   const stage = state.bracketStage || 1;
 
   // Must finish current courts
@@ -1436,7 +1496,7 @@ function advanceBracketStage() {
     const n = state.players.length;
     const needed = Math.ceil(n / 4);
     const have = (state.results || []).length;
-    toast('Stage 1 needs ' + needed + ' games (have ' + have + ') so everyone plays');
+    toast('Round 1 needs ' + needed + ' games (have ' + have + ') so everyone plays');
     return;
   }
 
@@ -1471,7 +1531,9 @@ function addBracketRound() {
         court: i+1, team1:m.team1, team2:m.team2, score1:null, score2:null, path:m.path||'', done:false
       }));
       state.bracketPending = state.bracketPending.slice(numCourts);
+      state.balanceUsedThisStage = false;
       save(); renderLive();
+      state.balanceUsedThisStage = false;
       toast('Next pair matches');
       return;
     }
@@ -1925,7 +1987,7 @@ function regenerateSchedule() {
 }
 
 function renderLive() {
-
+  
   const box = document.getElementById('live-courts');
   const sitBox = document.getElementById('live-sitting');
   if (!box) return;
@@ -1935,36 +1997,35 @@ function renderLive() {
     const stage = state.bracketStage || 1;
     const lab = document.getElementById('live-round-label');
     const prog = document.getElementById('live-progress');
-    if (lab) lab.textContent = (finalStage ? 'FINAL · ' : '') + 'Stage ' + stage;
+    if (lab) lab.textContent = (finalStage ? 'FINAL · ' : '') + 'Round ' + stage;
     if (prog) prog.textContent = (finalStage ? 'FINAL · ' : 'W vs W · ') + ((state.results||[]).length) + ' games';
     let html = (typeof bracketStageInfoHTML === 'function') ? bracketStageInfoHTML() : '';
     (state.liveCourts || []).forEach((court, ci) => {
       if (court.done) {
-        html += '<div class="court-card"><div class="court-head"><span class="court-name">COURT '+court.court+'</span><span class="live-tag">DONE</span></div><div style="text-align:center;padding:10px;color:var(--grey);font-size:0.85rem;">Waiting — Add Round / Advance Stage</div></div>';
+        html += '<div class="court-card"><div class="court-head"><span class="court-name">COURT '+court.court+'</span><span class="live-tag">DONE</span></div><div style="text-align:center;padding:10px;color:var(--grey);font-size:0.85rem;">End of this round</div></div>';
         return;
       }
       const s1 = court.score1 != null ? court.score1 : '';
       const s2 = court.score2 != null ? court.score2 : '';
-      const both = court.score1 != null && court.score2 != null && Number(court.score1) !== Number(court.score2);
       html += '<div class="court-card"><div class="court-head"><span class="court-name">COURT '+court.court+(court.path ? ' · '+court.path : '')+'</span><span class="live-tag">LIVE</span></div>';
       html += '<div class="match-grid">';
       html += '<div class="team-card"><div class="avatars"><div class="avatar av-a">'+initials(court.team1[0])+'</div><div class="avatar av-b">'+initials(court.team1[1])+'</div></div>';
       html += '<div class="team-label">'+teamLabel(court.team1)+'</div>';
-      html += '<input class="score-box" type="number" min="0" value="'+s1+'" data-court-score="'+ci+'-1" oninput="updateBracketScore('+ci+',1,this.value)" onchange="updateBracketScore('+ci+',1,this.value)"></div>';
+      html += '<input class="score-box" type="number" min="0" value="'+s1+'" data-court-score="'+court.court+'-1" oninput="updateBracketScore('+court.court+',1,this.value)" onchange="updateBracketScore('+court.court+',1,this.value)"></div>';
       html += '<div class="vs-text">vs</div>';
       html += '<div class="team-card"><div class="avatars"><div class="avatar av-c">'+initials(court.team2[0])+'</div><div class="avatar av-d">'+initials(court.team2[1])+'</div></div>';
       html += '<div class="team-label">'+teamLabel(court.team2)+'</div>';
-      html += '<input class="score-box" type="number" min="0" value="'+s2+'" data-court-score="'+ci+'-2" oninput="updateBracketScore('+ci+',2,this.value)" onchange="updateBracketScore('+ci+',2,this.value)"></div>';
+      html += '<input class="score-box" type="number" min="0" value="'+s2+'" data-court-score="'+court.court+'-2" oninput="updateBracketScore('+court.court+',2,this.value)" onchange="updateBracketScore('+court.court+',2,this.value)"></div>';
       html += '</div>';
       html += (typeof courtTimerHTML === 'function' ? courtTimerHTML(ci) : '');
-      if (both) html += '<button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="finishBracketCourt('+ci+')">Record result</button>';
+      html += '<button type="button" class="btn btn-primary btn-full" style="margin-top:10px;min-height:48px;" onclick="window.finishBracketCourt('+court.court+')">Record result</button>';
       html += '</div>';
     });
     html += '<div class="live-actions">';
     if (finalStage) {
       html += '<div style="flex:1;text-align:center;padding:8px;color:var(--neon);font-weight:700;font-size:0.8rem;">Final stage</div>';
     } else {
-      html += '<button class="btn btn-outline btn-full" onclick="advanceBracketStage()">Advance</button>';
+      html += '<button class="btn btn-outline btn-full" onclick="advanceBracketStage()">Next round</button>';
     }
     html += '<button class="btn btn-primary btn-full" onclick="addRound()">+ Round</button>';
     html += '</div>';
@@ -2026,7 +2087,7 @@ function renderRounds() {
   if (state.mode === 'bracket') {
     const stage = state.bracketStage || 1;
     const finalR = (typeof isFinalBracketStage==='function') && isFinalBracketStage();
-    let html = '<div class="card"><div class="card-h">'+(finalR?'FINAL STAGE':'WINNERS VS WINNERS')+' · STAGE '+stage+'</div><div class="card-b">';
+    let html = '<div class="card"><div class="card-h">'+(finalR?'FINAL ROUND':'WINNERS VS WINNERS')+' · ROUND '+stage+'</div><div class="card-b">';
     (state.liveCourts||[]).forEach(c => {
       if (c.done) return;
       html += '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.88rem;"><strong>Court '+c.court+'</strong>'+(c.path?' · '+c.path:'')+' · LIVE<br>'+teamLabel(c.team1)+' vs '+teamLabel(c.team2)+'</div>';
@@ -2214,13 +2275,14 @@ function renderPlayers() {
 
     html += (state.players||[]).map((n,i) => {
       const lv = playerLevel(n);
-      return '<div class="player-chip"><span><span class="num">'+(i+1)+'</span>'+n+levelBadge(n)+
-        '</span><span style="display:flex;align-items:center;gap:6px;">'+
+      return '<div class="player-chip">'+
+        '<span class="num">'+(i+1)+'</span>'+
+        '<span class="pname">'+n+' '+levelBadge(n)+'</span>'+
         '<select class="lvl-sel" onchange="setPlayerLevel('+i+',this.value)">'+
         '<option value="1"'+(lv===1?' selected':'')+'>1 Novice</option>'+
         '<option value="2"'+(lv===2?' selected':'')+'>2 Intermediate</option>'+
         '</select>'+
-        '<button onclick="removePlayer('+i+')">×</button></span></div>';
+        '<button class="del" onclick="removePlayer('+i+')">×</button></div>';
     }).join('');
     list.innerHTML = html;
   }
@@ -2229,7 +2291,7 @@ function renderPlayers() {
 function renderHeader() {
   const mode = state.mode || 'fixed';
   let modeLabel = 'Fixed rounds';
-  if (mode === 'bracket') modeLabel = 'Winners vs Winners · Stage ' + (state.bracketStage || 1);
+  if (mode === 'bracket') modeLabel = 'Winners vs Winners · Round ' + (state.bracketStage || 1);
   const games = (state.results || []).length;
   let meta = (state.players||[]).length + ' players · ' + state.courts + ' court' + (state.courts>1?'s':'');
   if (mode === 'fixed') {
@@ -2290,13 +2352,74 @@ function addPlayer() {
   save(); renderPlayers(); renderHeader();
   toast(name + ' added · ' + LEVEL_LABEL[state.levels[name]]);
 }
+function pickSubstitute(leaving, extraBusy) {
+  const busy = new Set(extraBusy || []);
+  busy.add(leaving);
+  (state.liveCourts || []).forEach(c => {
+    if (c.done) return;
+    (c.team1 || []).forEach(p => busy.add(p));
+    (c.team2 || []).forEach(p => busy.add(p));
+  });
+  const played = (n) => {
+    const st = (typeof getPlayerStats === 'function') ? getPlayerStats() : {};
+    return st[n] ? st[n].played : 0;
+  };
+  const rank = (typeof rankScore === 'function') ? rankScore : (n => 0);
+  const pool = (state.players || []).filter(p => p !== leaving && !busy.has(p));
+  if (!pool.length) return null;
+  pool.sort((a,b) => played(a)-played(b) || rank(b)-rank(a) || Math.random()-0.5);
+  return pool[0];
+}
+
+function replaceName(arr, oldN, newN) {
+  if (!arr) return arr;
+  return arr.map(p => p === oldN ? newN : p);
+}
+
 function removePlayer(idx) {
-  if (state.players.length <= 4) { alert('Need at least 4 players'); return; }
   const name = state.players[idx];
-  state.players.splice(idx,1);
+  if (!name) return;
+  const sub = pickSubstitute(name);
+  let swapped = 0;
+  (state.liveCourts || []).forEach(c => {
+    const on = (c.team1||[]).indexOf(name)>=0 || (c.team2||[]).indexOf(name)>=0;
+    if (!on) return;
+    const who = pickSubstitute(name);
+    if (!who) return;
+    c.team1 = replaceName(c.team1, name, who);
+    c.team2 = replaceName(c.team2, name, who);
+    swapped++;
+  });
+  if (state.bracketPending) {
+    state.bracketPending.forEach(m => {
+      const on = (m.team1||[]).indexOf(name)>=0 || (m.team2||[]).indexOf(name)>=0;
+      if (!on) return;
+      const who = pickSubstitute(name);
+      if (!who) return;
+      m.team1 = replaceName(m.team1, name, who);
+      m.team2 = replaceName(m.team2, name, who);
+      swapped++;
+    });
+  }
+  if (state.schedule) {
+    state.schedule.forEach(m => {
+      if (m.score1 != null) return;
+      const on = (m.team1||[]).indexOf(name)>=0 || (m.team2||[]).indexOf(name)>=0;
+      if (!on) return;
+      const who = pickSubstitute(name);
+      if (!who) return;
+      m.team1 = replaceName(m.team1, name, who);
+      m.team2 = replaceName(m.team2, name, who);
+    });
+  }
+  if (state.fixedPairs) state.fixedPairs = state.fixedPairs.filter(pr => pr[0]!==name && pr[1]!==name);
+  state.players = state.players.filter(p => p !== name);
   if (state.levels) delete state.levels[name];
-  save(); renderPlayers(); renderHeader();
-  toast(name + ' removed');
+  if (state.sitQueue) state.sitQueue = state.sitQueue.filter(p => p !== name);
+  save();
+  renderPlayers(); renderHeader();
+  try { renderLive(); renderStandings(); renderRounds(); } catch(e) {}
+  toast(sub || swapped ? (name + ' left · subbed') : (name + ' left'));
 }
 
 function insertIntoRemaining() {
