@@ -612,7 +612,7 @@ body { padding-bottom: 74px; }
           <div style="font-size:0.72rem;color:var(--grey);margin-top:4px;" id="calc-rounds-detail">3h · 2 courts · 10 min games + 2 min changeover</div>
         </div>
         <button class="btn btn-primary btn-full" onclick="applyCalcAndGenerate()">Use calculated rounds & Generate</button>
-        <button class="btn btn-outline btn-full" onclick="regenerateSchedule()" style="margin-top:8px;">Generate Mixed Schedule</button>
+        <button class="btn btn-outline btn-full" onclick="regenerateSchedule()" style="margin-top:8px;">Start Round Robin</button>
         <button class="btn btn-outline btn-full" onclick="startFixedPairsMode()" style="margin-top:8px;">Start Fixed Pairs</button>
         <button class="btn btn-outline btn-full" onclick="initBracketMode()" style="margin-top:8px;">Start Winners vs Winners</button>
         <p style="font-size:0.72rem;color:var(--grey2);margin-top:8px;text-align:center;">
@@ -658,7 +658,7 @@ function teamLabel(team) {
 
 const AV_CLASSES = ['av-a','av-b','av-c','av-d'];
 
-function save() { try { localStorage.setItem('pb_live_v97', JSON.stringify(state)); } catch(e){} }
+function save() { try { localStorage.setItem('pb_live_v98', JSON.stringify(state)); } catch(e){} }
 
 function renameInList(arr, map) {
   if (!arr) return arr;
@@ -699,7 +699,7 @@ function migrateRoster() {
 
 function load() {
   try {
-    const d = JSON.parse(localStorage.getItem('pb_live_v97'));
+    const d = JSON.parse(localStorage.getItem('pb_live_v98'));
     if (d && d.players) { state = Object.assign(state, d); if (!state.currentRound) state.currentRound = 1; if (!state.levels) state.levels = {}; if (!state.fixedPairs) state.fixedPairs = []; if (!state.pairMode) state.pairMode = 'rotate'; migrateRoster(); ensureLevels(); return true; }
   } catch(e){}
   return false;
@@ -1072,7 +1072,7 @@ function recordResult(team1, team2, score1, score2) {
     score2: Number(score2),
     ts: Date.now()
   });
-  try { localStorage.setItem('pb_live_v97', JSON.stringify(state)); } catch(e) {}
+  try { localStorage.setItem('pb_live_v98', JSON.stringify(state)); } catch(e) {}
 }
 
 // ===== WINNERS vs WINNERS / LOSERS vs LOSERS =====
@@ -1674,10 +1674,10 @@ function addRound() {
   });
   const ordered = [...state.players].sort((a,b)=>(playCount[a]||0)-(playCount[b]||0)||Math.random()-0.5);
   const active = ordered.slice(0, perRound);
-  const sh = shuffle([...active]);
   for (let c = 0; c < courts; c++) {
-    const t1 = [sh[c*4], sh[c*4+1]];
-    const t2 = [sh[c*4+2], sh[c*4+3]];
+    const four = active.slice(c*4, c*4+4);
+    const paired = (typeof pairMixed==='function') ? pairMixed(four) : { team1:[four[0],four[1]], team2:[four[2],four[3]] };
+    const t1 = paired.team1, t2 = paired.team2;
     state.schedule.push({
       round: newRoundNum, court: c+1,
       team1: t1, team2: t2,
@@ -1866,6 +1866,7 @@ function generateFixedPairSchedule() {
 function generateSchedule() {
   try {
     state.pairMode = 'rotate';
+    state.mode = 'fixed';
     const players = state.players || [];
     const n = players.length;
     let courts = Number(state.courts) || 2;
@@ -2023,6 +2024,7 @@ function regenerateSchedule() {
   if (state.players.length < courts * 4) { alert('Need more players'); return; }
   state.courts = courts;
   state.rounds = rounds;
+  state.mode = 'fixed';;
   toast('Generating ' + rounds + ' rounds...');
   setTimeout(() => generateSchedule(), 80);
 }
@@ -2117,6 +2119,7 @@ function renderLive() {
   html += '<button class="btn btn-outline btn-full" onclick="prevRound()">‹ Prev</button>';
   html += '<button class="btn btn-primary btn-full" onclick="nextRound()">Next game ›</button>';
   html += '</div>';
+  html += '<button class="btn btn-primary btn-full" style="margin-top:8px;" onclick="addRound()">+ Add games (still have time)</button>';
   box.innerHTML = html || '<div class="empty">No matches this round. Generate a schedule in Setup.</div>';
   if (sitBox) sitBox.innerHTML = sitting.length ? '<div class="sitting-bar"><strong>Sitting:</strong> '+sitting.join(', ')+'</div>' : '';
 }
@@ -2331,7 +2334,7 @@ function renderPlayers() {
 
 function renderHeader() {
   const mode = state.mode || 'fixed';
-  let modeLabel = 'Fixed rounds';
+  let modeLabel = 'Round robin';
   if (mode === 'bracket') modeLabel = 'Winners vs Winners · Round ' + (state.bracketStage || 1);
   const games = (state.results || []).length;
   let meta = (state.players||[]).length + ' players · ' + state.courts + ' court' + (state.courts>1?'s':'');
