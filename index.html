@@ -534,7 +534,7 @@ body { padding-bottom: 74px; }
           </select>
         </div>
         <div id="fixed-pairs-box" style="display:none;margin-bottom:12px;">
-          <div style="font-size:0.72rem;color:var(--grey);margin-bottom:6px;">Lock two players as a team. Matches are pair vs pair.</div>
+          <div style="font-size:0.72rem;color:var(--grey);margin-bottom:6px;">Lock two players as a team, or tap Auto-pair. Then Generate or Start Winners vs Winners. Teams stay together.</div>
           <div id="fixed-pairs-list"></div>
           <div style="display:flex;gap:8px;margin-top:8px;">
             <select id="pair-a" style="flex:1;"></select>
@@ -591,11 +591,11 @@ function teamLabel(team) {
 
 const AV_CLASSES = ['av-a','av-b','av-c','av-d'];
 
-function save() { try { localStorage.setItem('pb_live_v46', JSON.stringify(state)); } catch(e){} }
+function save() { try { localStorage.setItem('pb_live_v48', JSON.stringify(state)); } catch(e){} }
 function load() {
   try {
-    const d = JSON.parse(localStorage.getItem('pb_live_v46'));
-    if (d && d.players) { state = Object.assign(state, d); if (!state.currentRound) state.currentRound = 1; if (!state.levels) state.levels = {}; ensureLevels();
+    const d = JSON.parse(localStorage.getItem('pb_live_v48'));
+    if (d && d.players) { state = Object.assign(state, d); if (!state.currentRound) state.currentRound = 1; if (!state.levels) state.levels = {}; if (!state.fixedPairs) state.fixedPairs = []; if (!state.pairMode) state.pairMode = 'rotate'; ensureLevels();
 try { renderFixedPairs(); } catch(e) {} return true; }
   } catch(e){}
   return false;
@@ -951,7 +951,7 @@ function recordResult(team1, team2, score1, score2) {
     score2: Number(score2),
     ts: Date.now()
   });
-  try { localStorage.setItem('pb_live_v46', JSON.stringify(state)); } catch(e) {}
+  try { localStorage.setItem('pb_live_v48', JSON.stringify(state)); } catch(e) {}
 }
 
 // ===== WINNERS vs WINNERS / LOSERS vs LOSERS =====
@@ -965,6 +965,9 @@ function initBracketMode() {
   state.players.forEach(p => { state.playCount[p] = 0; });
   state.bracketStage = 1;
   state.currentRound = 1;
+  const modeEl = document.getElementById('pair-mode');
+  if (modeEl) state.pairMode = modeEl.value === 'fixed' ? 'fixed' : 'rotate';
+  if (state.pairMode === 'fixed' && !(state.fixedPairs||[]).length) autoFixedPairs();
   state.liveCourts = null;
   state.bracketPending = [];
   buildBracketStage();
@@ -1373,7 +1376,20 @@ function playGap() {
 }
 
 function addBracketRound() {
-  // If some players are 2+ games behind, next wave is catch-up only
+  if (state.pairMode === 'fixed') {
+    if (state.bracketPending && state.bracketPending.length) {
+      const numCourts = state.courts || 2;
+      state.liveCourts = state.bracketPending.slice(0, numCourts).map((m, i) => ({
+        court: i+1, team1:m.team1, team2:m.team2, score1:null, score2:null, path:m.path||'', done:false
+      }));
+      state.bracketPending = state.bracketPending.slice(numCourts);
+      save(); renderLive();
+      toast('Next pair matches');
+      return;
+    }
+    advanceBracketStage();
+    return;
+  }
   if (playGap() >= 2 && !(state.bracketPending||[]).length) {
     const st = getPlayerStats();
     const played = (n) => st[n] ? st[n].played : 0;
@@ -1564,11 +1580,12 @@ function autoFixedPairs() {
 
 function generateFixedPairSchedule() {
   const pairs = (state.fixedPairs || []).filter(pr => pr && pr.length === 2);
-  const courts = Number(state.courts) || 2;
-  let rounds = Number(state.rounds) || 15;
-  if (pairs.length < 2) { alert('Need at least 2 fixed pairs'); return; }
-  const perRound = courts; // one pair-vs-pair per court
-  if (pairs.length < courts * 2) { alert('Need at least ' + (courts*2) + ' pairs for ' + courts + ' courts'); return; }
+  let courts = Number(document.getElementById('num-courts')?.value || state.courts || 2);
+  let rounds = Number(document.getElementById('num-rounds')?.value || state.rounds || 15);
+  if (rounds > 20) rounds = 20;
+  if (pairs.length < 2) { alert('Need at least 2 fixed pairs. Tap Auto-pair or Pair two names first.'); return; }
+  if (pairs.length < courts * 2) courts = Math.max(1, Math.floor(pairs.length / 2));
+  const perRound = courts;
   const play = pairs.map(() => 0);
   const faced = pairs.map(() => pairs.map(() => 0));
   const schedule = [];
@@ -1577,7 +1594,7 @@ function generateFixedPairSchedule() {
     const active = order.slice(0, perRound * 2);
     // pair them into matches minimizing rematches
     let best = null, bestScore = Infinity;
-    for (let attempt = 0; attempt < 200; attempt++) {
+    for (let attempt = 0; attempt < 20; attempt++) {
       const sh = shuffle(active.slice());
       const matches = [];
       let score = 0;
@@ -1595,6 +1612,7 @@ function generateFixedPairSchedule() {
     }
     best.forEach((m,c) => {
       const p1 = pairs[m[0]], p2 = pairs[m[1]];
+      if (!p1 || !p2) return;
       schedule.push({
         round: r, court: c+1,
         team1: [p1[0], p1[1]], team2: [p2[0], p2[1]],
@@ -1622,7 +1640,13 @@ function generateFixedPairSchedule() {
 
 function generateSchedule() {
   try {
-    if (state.pairMode === 'fixed') { generateFixedPairSchedule(); return; }
+    const modeEl = document.getElementById('pair-mode');
+    if (modeEl) state.pairMode = modeEl.value === 'fixed' ? 'fixed' : 'rotate';
+    if (state.pairMode === 'fixed') {
+      if (!(state.fixedPairs||[]).length) autoFixedPairs();
+      generateFixedPairSchedule();
+      return;
+    }
     const players = state.players || [];
     const n = players.length;
     let courts = Number(state.courts) || 2;
