@@ -526,16 +526,7 @@ body { padding-bottom: 74px; }
           <div style="font-size:1.5rem;font-weight:800;color:var(--white);margin-top:4px;" id="calc-rounds-result">16 rounds</div>
           <div style="font-size:0.72rem;color:var(--grey);margin-top:4px;" id="calc-rounds-detail">3h · 2 courts · 10 min games + 2 min changeover</div>
         </div>
-        <div class="form-group">
-          <label>PARTNERING</label>
-          <select id="pair-mode" onchange="setPairMode(this.value)">
-            <option value="rotate">Rotate partners</option>
-            <option value="fixed">Fixed pairs</option>
-          </select>
-        </div>
-        <div id="fixed-pairs-box" style="display:none;margin-bottom:12px;">
-          <div style="font-size:0.72rem;color:var(--grey);margin-bottom:6px;">Lock two players as a team, or tap Auto-pair. Then Generate or Start Winners vs Winners. Teams stay together.</div>
-          <div id="fixed-pairs-list"></div>
+        <div id="fixed-pairs-list"></div>
           <div style="display:flex;gap:8px;margin-top:8px;">
             <select id="pair-a" style="flex:1;"></select>
             <select id="pair-b" style="flex:1;"></select>
@@ -591,11 +582,11 @@ function teamLabel(team) {
 
 const AV_CLASSES = ['av-a','av-b','av-c','av-d'];
 
-function save() { try { localStorage.setItem('pb_live_v49', JSON.stringify(state)); } catch(e){} }
+function save() { try { localStorage.setItem('pb_live_v50', JSON.stringify(state)); } catch(e){} }
 function load() {
   try {
-    const d = JSON.parse(localStorage.getItem('pb_live_v49'));
-    if (d && d.players) { state = Object.assign(state, d); if (!state.currentRound) state.currentRound = 1; if (!state.levels) state.levels = {}; if (!state.fixedPairs) state.fixedPairs = []; if (!state.pairMode) state.pairMode = 'rotate'; ensureLevels();
+    const d = JSON.parse(localStorage.getItem('pb_live_v50'));
+    if (d && d.players) { state = Object.assign(state, d); if (!state.currentRound) state.currentRound = 1; if (!state.levels) state.levels = {}; if (!state.fixedPairs) state.fixedPairs = []; state.pairMode = 'rotate'; ensureLevels();
 try { renderFixedPairs(); } catch(e) {} return true; }
   } catch(e){}
   return false;
@@ -951,7 +942,7 @@ function recordResult(team1, team2, score1, score2) {
     score2: Number(score2),
     ts: Date.now()
   });
-  try { localStorage.setItem('pb_live_v49', JSON.stringify(state)); } catch(e) {}
+  try { localStorage.setItem('pb_live_v50', JSON.stringify(state)); } catch(e) {}
 }
 
 // ===== WINNERS vs WINNERS / LOSERS vs LOSERS =====
@@ -965,9 +956,6 @@ function initBracketMode() {
   state.players.forEach(p => { state.playCount[p] = 0; });
   state.bracketStage = 1;
   state.currentRound = 1;
-  const modeEl = document.getElementById('pair-mode');
-  if (modeEl) state.pairMode = modeEl.value === 'fixed' ? 'fixed' : 'rotate';
-  if (state.pairMode === 'fixed' && !(state.fixedPairs||[]).length) autoFixedPairs();
   state.liveCourts = null;
   state.bracketPending = [];
   buildBracketStage();
@@ -1152,7 +1140,7 @@ function buildFixedPairBracketMatches() {
 }
 
 function buildBracketStage() {
-  if (state.pairMode === 'fixed' && (state.fixedPairs||[]).length >= 2) {
+  if (false && state.pairMode === 'fixed' && (state.fixedPairs||[]).length >= 2) {
     const matches = buildFixedPairBracketMatches();
     const numCourts = state.courts || 2;
     state.bracketQueue = matches;
@@ -1648,13 +1636,7 @@ function generateFixedPairSchedule() {
 
 function generateSchedule() {
   try {
-    const modeEl = document.getElementById('pair-mode');
-    if (modeEl) state.pairMode = modeEl.value === 'fixed' ? 'fixed' : 'rotate';
-    if (state.pairMode === 'fixed') {
-      if (!(state.fixedPairs||[]).length) autoFixedPairs();
-      generateFixedPairSchedule();
-      return;
-    }
+    
     const players = state.players || [];
     const n = players.length;
     let courts = Number(state.courts) || 2;
@@ -2063,8 +2045,8 @@ function renderPlayers() {
 
 function renderHeader() {
   const mode = state.mode || 'fixed';
-  let modeLabel = (state.pairMode==='fixed') ? 'Fixed pairs' : 'Fixed rounds';
-  if (mode === 'bracket') modeLabel = 'Winners vs Winners · Stage ' + (state.bracketStage || 1) + ((state.pairMode==='fixed')?' · Fixed pairs':'');
+  let modeLabel = 'Fixed rounds';
+  if (mode === 'bracket') modeLabel = 'Winners vs Winners · Stage ' + (state.bracketStage || 1);
   const games = (state.results || []).length;
   let meta = (state.players||[]).length + ' players · ' + state.courts + ' court' + (state.courts>1?'s':'');
   if (mode === 'fixed') {
